@@ -1,0 +1,454 @@
+TemplateFormatVersion" : "2010-09-09",
+
+	"Description" : "VPC Builder By Darren Holdaway",
+
+	"Parameters" : {
+
+		"OperatorEmail": {
+      "Description": "Email address to notify if there are any scaling operations",
+      "Type": "String"
+    },
+		"WebServerInstanceType" : {
+			"Description" : "Type of EC2 instance to launch",
+			"Type" : "String",
+			"Default" : "t1.micro",
+			"AllowedValues" : [
+				"t1.micro",
+				"m1.small",
+				"m1.medium",
+				"m1.large"],
+			"ConstraintDescription" : "This must be a valid EC2 instance type."
+		},
+		
+		"EC2KeyName" : {
+			"Description" : "The EC2 Key Pair to allow SSH access to the instances (default included for testing!)",
+			"Type" : "String",
+			"Default" : "vpctest",
+			"MinLength": "1",
+            "MaxLength": "255",
+            "AllowedPattern": "[\\x20-\\x7E]*",
+            "ConstraintDescription": "Can contain only ASCII characters."
+		},
+		
+		"ApplicationAMIID" : {
+			"Description" : "The AMI ID of you application as provided by DataBarracks - You must make sure it is available in the region your are launching",
+			"Type" : "String",
+			"Default" : "ami-7a11e213"
+		},
+		
+		"RDSDBName" : {
+			"Default": "DataBarracksWebApp",
+			"Description" : "RDS Database Name",
+			"Type": "String",
+			"MinLength": "1",
+			"MaxLength": "64",
+			"AllowedPattern" : "[a-zA-Z][a-zA-Z0-9]*",
+			"ConstraintDescription" : "Must begin with a letter and contain only alphanumeric characters."
+		},
+
+		"RDSUsername": {
+			"Default": "superadmin",
+			"NoEcho": "false",
+			"Description" : "RDS Database Root Account Username",
+			"Type": "String",
+			"MinLength": "1",
+			"MaxLength": "16",
+			"AllowedPattern" : "[a-z][a-z]*",
+			"ConstraintDescription" : "Must be lowercase letters"
+		},
+
+		"RDSPassword": {
+			"Default": "ChangeMe",
+			"NoEcho": "false",
+			"Description" : "RDS Database Root Account Password",
+			"Type": "String",
+			"MinLength": "8",
+			"MaxLength": "40",
+			"AllowedPattern" : "[\\x20-\\x7E]*",
+			"ConstraintDescription" : "Must contain only ASCII characters. Min 8 Chars, Max 40 Chars"
+		},
+
+		"RDSInstanceClass" : {
+			"Default" : "db.m1.small",
+			"Description" : "RDS Database Instance Class",
+			"Type" : "String",
+			"AllowedValues" : [ "db.m1.small", "db.m1.large", "db.m1.xlarge", "db.m2.xlarge", "db.m2.2xlarge", "db.m2.4xlarge" ],
+			"ConstraintDescription" : "You must select a valid database instance type."
+		},
+
+		"RDSAllocatedStorage" : {
+			"Default": "5",
+			"Description" : "The size of the database (Gb)",
+			"Type": "Number",
+			"MinValue": "5",
+			"MaxValue": "1024",
+			"ConstraintDescription" : "Must be between 5 and 1024Gb."
+		}
+	},
+
+	"Mappings" : {
+		"AvailabilityZones":{
+			"us-east-1"      : { "AzA": "us-east-1a", "AzB": "us-east-1b"},
+			"us-west-1"      : { "AzA": "us-west-1a", "AzB": "us-west-1b"},
+			"us-west-2"      : { "AzA": "us-west-2a", "AzB": "us-west-2b"},
+			"eu-west-1"      : { "AzA": "eu-west-1a", "AzB": "eu-west-1b"},
+			"sa-east-1"      : { "AzA": "sa-east-1a", "AzB": "sa-east-1b"},
+			"ap-southeast-1" : { "AzA": "ap-southeast-1a", "AzB": "ap-southeast-1b"},
+			"ap-southeast-2" : { "AzA": "ap-southeast-2a", "AzB": "ap-southeast-2b"},
+			"ap-northeast-1" : { "AzA": "ap-northeast-1a", "AzB": "ap-northeast-1b"}
+		},
+		
+		"SubnetConfig" : {
+			"VPC"     : { "CIDR" : "10.1.0.0/16" },
+			"WebSvrSubnet"   	: { "CIDR" : "10.1.0.0/24"},
+			"DatabaseSubnetA"   : { "CIDR" : "10.1.100.0/24"},
+			"DatabaseSubnetB"   : { "CIDR" : "10.1.101.0/24"}
+		}
+	},
+
+	"Resources" : {
+
+		"NotificationTopic": {
+      "Type": "AWS::SNS::Topic",
+      "Properties": {
+        "Subscription": [ {
+            "Endpoint": { "Ref": "OperatorEmail" },
+            "Protocol": "email" } ]
+      }
+    },
+
+		"VPC" : {
+		  "Type" : "AWS::EC2::VPC",
+		  "Properties" : {
+			"EnableDnsSupport" : "true",
+			"EnableDnsHostnames" : "true",
+			"CidrBlock" : { "Fn::FindInMap" : [ "SubnetConfig", "VPC", "CIDR" ]},
+			"Tags" : [ { "Key" : "Name", "Value" : "Interview Exercise VPC" } ]
+		  }
+		},
+		
+		"WebSubnet" : {
+		  "Type" : "AWS::EC2::Subnet",
+		  "Properties" : {
+			"VpcId" : { "Ref" : "VPC" },
+			"AvailabilityZone" : {"Fn::FindInMap" : [ "AvailabilityZones", { "Ref" : "AWS::Region" }, "AzA" ]},
+			"CidrBlock" : { "Fn::FindInMap" : [ "SubnetConfig", "WebSvrSubnet", "CIDR" ]},
+			"Tags" : [ { "Key" : "Name", "Value" : "Web Subnet" } ]
+		  }
+		},
+
+		"DBSubnetA" : {
+		  "Type" : "AWS::EC2::Subnet",
+		  "Properties" : {
+			"VpcId" : { "Ref" : "VPC" },
+			"AvailabilityZone" :  {"Fn::FindInMap" : [ "AvailabilityZones", { "Ref" : "AWS::Region" }, "AzA" ]},
+			"CidrBlock" : { "Fn::FindInMap" : [ "SubnetConfig", "DatabaseSubnetA", "CIDR" ]},
+			"Tags" : [ { "Key" : "Name", "Value" : "DB Subnet A" } ]
+		  }
+		},
+		
+		"DBSubnetB" : {
+		  "Type" : "AWS::EC2::Subnet",
+		  "Properties" : {
+			"VpcId" : { "Ref" : "VPC" },
+			"AvailabilityZone" :  {"Fn::FindInMap" : [ "AvailabilityZones", { "Ref" : "AWS::Region" }, "AzB" ]},
+			"CidrBlock" : { "Fn::FindInMap" : [ "SubnetConfig", "DatabaseSubnetB", "CIDR" ]},
+			"Tags" : [ { "Key" : "Name", "Value" : "DB Subnet B" } ]
+		  }
+		},
+
+		"InternetGateway" : {
+			"Type": "AWS::EC2::InternetGateway",
+			"Properties": {
+				"Tags" : [ { "Key" : "Name", "Value" : "VPC IGW" } ]
+			}
+		},
+		
+		"AttachInternetGateway":{
+			"Type": "AWS::EC2::VPCGatewayAttachment",
+			"Properties":{
+				"VpcId":{"Ref":"VPC"},
+				"InternetGatewayId":{"Ref":"InternetGateway"}
+			}
+		},
+		
+		"VPCRouteTable":{
+			"Type":"AWS::EC2::RouteTable",
+			"Properties":{
+				"VpcId": {"Ref":"VPC"},
+				"Tags" : [ { "Key" : "Name", "Value" : "VPC Route Table" } ]
+			}
+		},
+		
+		"VPCDeafultRoute":{
+			"Type":"AWS::EC2::Route",
+			"DependsOn":"AttachInternetGateway",
+			"Properties":{
+				"RouteTableId":{"Ref":"VPCRouteTable"},
+				"DestinationCidrBlock": "0.0.0.0/0",
+				"GatewayId": {"Ref": "InternetGateway"}
+			}
+		},
+		
+		"WebSubnetRouteTableAssociation": {
+			"Type": "AWS::EC2::SubnetRouteTableAssociation",
+			"Properties": {
+				"SubnetId": {"Ref": "WebSubnet"},
+				"RouteTableId": {"Ref": "VPCRouteTable"}
+			}
+		},
+		
+		"DBSubnetARouteTableAssociation": {
+			"Type": "AWS::EC2::SubnetRouteTableAssociation",
+			"Properties": {
+				"SubnetId": {"Ref": "DBSubnetA"},
+				"RouteTableId": {"Ref": "VPCRouteTable"}
+			}
+		},
+		
+		"DBSubnetBRouteTableAssociation": {
+			"Type": "AWS::EC2::SubnetRouteTableAssociation",
+			"Properties": {
+				"SubnetId": {"Ref": "DBSubnetB"},
+				"RouteTableId": {"Ref": "VPCRouteTable"}
+			}
+		},
+		
+		"ELBSecurityGroup" : {
+			"Type" : "AWS::EC2::SecurityGroup",
+			"Properties" : {
+				"VpcId" : {"Ref":"VPC"},
+				"GroupDescription" : "ELB Security Group",
+				"Tags" : [ { "Key" : "Name", "Value" : "ELB SG" } ]
+			}
+		},
+		
+		"ELBSGIngress1": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "GroupId": {"Fn::GetAtt": ["ELBSecurityGroup","GroupId"]},
+                "IpProtocol": "tcp",
+                "FromPort": "80",
+                "ToPort": "80",
+                "CidrIp" : "0.0.0.0/0"
+            }
+		},
+		
+		"ELBSGEgress1": {
+            "Type": "AWS::EC2::SecurityGroupEgress",
+            "Properties": {
+                "GroupId": {"Fn::GetAtt": ["ELBSecurityGroup","GroupId"]},
+                "IpProtocol": "tcp",
+                "FromPort": "80",
+                "ToPort": "80",
+				"SourceSecurityGroupId" : {"Fn::GetAtt": ["WebSecurityGroup","GroupId"]}
+            }
+		},
+		
+		"WebSecurityGroup" : {
+			"Type" : "AWS::EC2::SecurityGroup",
+			"Properties" : {
+				"VpcId" : { "Ref" : "VPC" },
+				"GroupDescription" : "Web Server Security Group",
+				"Tags" : [ { "Key" : "Name", "Value" : "Web SG" } ]
+			}
+		},
+		
+		"WebSGIngress1": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "GroupId": {"Fn::GetAtt": ["WebSecurityGroup","GroupId"]},
+                "IpProtocol": "tcp",
+                "FromPort": "80",
+                "ToPort": "80",
+				"SourceSecurityGroupId" : {"Fn::GetAtt": ["ELBSecurityGroup","GroupId"]}
+            }
+		},
+		
+		"WebSGEgress1": {
+            "Type": "AWS::EC2::SecurityGroupEgress",
+            "Properties": {
+                "GroupId": {"Fn::GetAtt": ["WebSecurityGroup","GroupId"]},
+                "IpProtocol": "tcp",
+                "FromPort": "5432",
+                "ToPort": "5432",
+				"SourceSecurityGroupId" : {"Fn::GetAtt": ["DBSecurityGroup","GroupId"]}				
+            }
+		},
+		
+		"DBSecurityGroup" : {
+			"Type" : "AWS::EC2::SecurityGroup",
+			"Properties" : {
+				"VpcId" : { "Ref" : "VPC" },
+				"GroupDescription" : "DB Server Security Group",
+				"Tags" : [ { "Key" : "Name", "Value" : "DB SG" } ]
+			}
+		},
+		
+		"DBSGIngress1": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "GroupId": {"Fn::GetAtt": ["DBSecurityGroup","GroupId"]},
+                "IpProtocol": "tcp",
+                "FromPort": "5432",
+                "ToPort": "5432",
+                "SourceSecurityGroupId" : {"Fn::GetAtt": ["WebSecurityGroup","GroupId"]}
+            }
+		},
+				
+		"RDSSubnetGroup" : {
+			"Type" : "AWS::RDS::DBSubnetGroup",
+			"Properties" : {
+				"DBSubnetGroupDescription" : "RDS Subnet Group",
+				"SubnetIds" : [{"Ref":"DBSubnetA"},{"Ref":"DBSubnetB"}]
+			}
+		},
+		
+		"RDSDatabase" : {
+			"Type" : "AWS::RDS::DBInstance",
+			"Properties" :{
+				"AllocatedStorage" : {"Ref" : "RDSAllocatedStorage"},
+				"DBInstanceClass" : {"Ref" : "RDSInstanceClass"},
+				"DBName" : {"Ref" : "RDSDBName"},
+				"DBSubnetGroupName" : {"Ref": "RDSSubnetGroup"},
+				"Engine" : "postgres",
+				"MultiAZ" : "false",
+				"MasterUsername" : {"Ref" : "RDSUsername"},
+				"MasterUserPassword" : {"Ref" : "RDSPassword"},
+				"PubliclyAccessible" : "false",
+				"Tags" : [ { "Key" : "Name", "Value" : "RDS Database" } ],
+				"VPCSecurityGroups" : [{"Ref": "DBSecurityGroup"}]
+			}
+		},
+		
+		"WebServerScalingGroup" : {
+			"Type" : "AWS::AutoScaling::AutoScalingGroup",
+			"Properties" : {
+				"AvailabilityZones" : [{"Fn::FindInMap" : [ "AvailabilityZones", { "Ref" : "AWS::Region" }, "AzA" ]}],
+				"LaunchConfigurationName" : { "Ref" : "WebServerLaunchConfig" },
+				"MinSize" : "1",
+				"MaxSize" : "2",
+				"LoadBalancerNames" : [ { "Ref" : "WebServerELB" } ],
+				"VPCZoneIdentifier" : [{ "Ref" : "WebSubnet" }],
+				"HealthCheckGracePeriod" : "120",
+				"HealthCheckType" : "ELB"	
+			},
+		"NotificationConfiguration" : {
+          "TopicARN" : { "Ref" : "NotificationTopic" },
+          "NotificationTypes" : [ "autoscaling:EC2_INSTANCE_LAUNCH","autoscaling:EC2_INSTANCE_LAUNCH_ERROR","autoscaling:EC2_INSTANCE_TERMINATE", "autoscaling:EC2_INSTANCE_TERMINATE_ERROR"]
+        }
+		},
+		
+		"WebServerLaunchConfig" : {
+			"Type" : "AWS::AutoScaling::LaunchConfiguration",
+			"Properties" : {
+				"KeyName" : { "Ref" : "EC2KeyName" },
+				"ImageId" : { "Ref" : "ApplicationAMIID"},
+				"SecurityGroups" : [ { "Ref" : "WebSecurityGroup" } ],
+				"InstanceType" : { "Ref" : "WebServerInstanceType" },
+				"AssociatePublicIpAddress" : "true"
+			}
+		},
+
+		"WebServerScaleUpPolicy" : {
+			"Type" : "AWS::AutoScaling::ScalingPolicy",
+			"Properties" : {
+				"AdjustmentType" : "ChangeInCapacity",
+				"AutoScalingGroupName" : { "Ref" : "WebServerScalingGroup" },
+				"Cooldown" : "60",
+				"ScalingAdjustment" : "1"
+			}
+		},
+		
+		"WebServerScaleDownPolicy" : {
+			"Type" : "AWS::AutoScaling::ScalingPolicy",
+			"Properties" : {
+				"AdjustmentType" : "ChangeInCapacity",
+				"AutoScalingGroupName" : { "Ref" : "WebServerScalingGroup" },
+				"Cooldown" : "60",
+				"ScalingAdjustment" : "-1"
+			}
+		},
+
+		"CPUAlarmHigh": {
+			"Type": "AWS::CloudWatch::Alarm",
+			"Properties": {
+				"AlarmDescription": "Scale-up if CPU > 90% for 10 minutes",
+				"MetricName": "CPUUtilization",
+				"Namespace": "AWS/EC2",
+				"Statistic": "Average",
+				"Period": "300",
+				"EvaluationPeriods": "2",
+				"Threshold": "90",
+				"AlarmActions": [ { "Ref": "WebServerScaleUpPolicy" } ],
+				"Dimensions": [
+					{
+					"Name": "AutoScalingGroupName",
+					"Value": { "Ref": "WebServerScalingGroup" }
+					}
+				],
+				"ComparisonOperator": "GreaterThanThreshold"
+			}
+		},
+		
+		"CPUAlarmLow": {
+			"Type": "AWS::CloudWatch::Alarm",
+			"Properties": {
+				"AlarmDescription": "Scale-down if CPU < 70% for 10 minutes",
+				"MetricName": "CPUUtilization",
+				"Namespace": "AWS/EC2",
+				"Statistic": "Average",
+				"Period": "300",
+				"EvaluationPeriods": "2",
+				"Threshold": "70",
+				"AlarmActions": [ { "Ref": "WebServerScaleDownPolicy" } ],
+				"Dimensions": [
+					{
+					"Name": "AutoScalingGroupName",
+					"Value": { "Ref": "WebServerScalingGroup" }
+					}
+				],
+				"ComparisonOperator": "LessThanThreshold"
+			}
+		},
+
+		"WebServerELB" : {
+			"Type" : "AWS::ElasticLoadBalancing::LoadBalancer",
+			"Properties" : {
+				"SecurityGroups" : [ { "Ref" : "ELBSecurityGroup" } ],
+				"Subnets" : [ { "Ref" : "WebSubnet" } ],
+				"Listeners" : [ {
+					"LoadBalancerPort" : "80",
+					"InstancePort" : "80",
+					"Protocol" : "HTTP"
+				} ],
+				"HealthCheck" : {
+					"Target" : "HTTP:80/",
+					"HealthyThreshold" : "3",
+					"UnhealthyThreshold" : "5",
+					"Interval" : "30",
+					"Timeout" : "5"
+				}
+			}
+		}
+	},
+	
+	"Outputs" : {
+		"VPCId" : {
+			"Description" : "VPC ID",
+			"Value" :  { "Ref" : "VPC" }
+		},
+		"ELBURL" : {
+			"Description" : "The URL of the ELB",
+			"Value" :  { "Fn::Join" : [ "", [ "http://", { "Fn::GetAtt" : [ "WebServerELB", "DNSName" ]}]]}
+		},
+		"RDSDatabaseEndpoint" :{
+			"Description" : "RDS Database Endpoint",
+			"Value" :  {"Fn::GetAtt": ["RDSDatabase","Endpoint.Address"]}
+		},
+		"RDSDatabasePort" :{
+			"Description" : "RDS Database Port",
+			"Value" :  {"Fn::GetAtt": ["RDSDatabase","Endpoint.Port"]}
+		}
+	}
+}
